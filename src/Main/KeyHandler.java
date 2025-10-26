@@ -16,16 +16,17 @@ public class KeyHandler implements KeyListener {
     public void keyPressed(KeyEvent e) {
         int code = e.getKeyCode();
         
-        if (code == KeyEvent.VK_W) {
+        // WASD y flechas para movimiento
+        if (code == KeyEvent.VK_W || code == KeyEvent.VK_UP || code == KeyEvent.VK_SPACE) {
             upPressed = true;
         }
-        if (code == KeyEvent.VK_S) {
+        if (code == KeyEvent.VK_S || code == KeyEvent.VK_DOWN) {
             downPressed = true;
         }
-        if (code == KeyEvent.VK_A) {
+        if (code == KeyEvent.VK_A || code == KeyEvent.VK_LEFT) {
             leftPressed = true;
         }
-        if (code == KeyEvent.VK_D) {
+        if (code == KeyEvent.VK_D || code == KeyEvent.VK_RIGHT) {
             rightPressed = true;
         }
         if (code == KeyEvent.VK_SHIFT) {
@@ -34,8 +35,10 @@ public class KeyHandler implements KeyListener {
         if (code == KeyEvent.VK_ENTER) {
             enterPressed = true;
         }
-     // Guardar la última tecla presionada como carácter (para nombres)
-        if (Character.isLetterOrDigit(e.getKeyChar()) || e.getKeyChar() == '\b') {
+        
+        // Guardar la última tecla presionada como carácter (para nombres)
+        // Permitir letras, números, espacios y backspace
+        if (Character.isLetterOrDigit(e.getKeyChar()) || e.getKeyChar() == '\b' || e.getKeyChar() == ' ') {
             lastKeyPressed = e.getKeyChar();
         }
     }
@@ -44,16 +47,17 @@ public class KeyHandler implements KeyListener {
     public void keyReleased(KeyEvent e) {
         int code = e.getKeyCode();
         
-        if (code == KeyEvent.VK_W) {
+        // WASD y flechas para movimiento
+        if (code == KeyEvent.VK_W || code == KeyEvent.VK_UP || code == KeyEvent.VK_SPACE) {
             upPressed = false;
         }
-        if (code == KeyEvent.VK_S) {
+        if (code == KeyEvent.VK_S || code == KeyEvent.VK_DOWN) {
             downPressed = false;
         }
-        if (code == KeyEvent.VK_A) {
+        if (code == KeyEvent.VK_A || code == KeyEvent.VK_LEFT) {
             leftPressed = false;
         }
-        if (code == KeyEvent.VK_D) {
+        if (code == KeyEvent.VK_D || code == KeyEvent.VK_RIGHT) {
             rightPressed = false;
         }
         if (code == KeyEvent.VK_SHIFT) {

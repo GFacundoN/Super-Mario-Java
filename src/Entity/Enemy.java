@@ -11,12 +11,12 @@ public class Enemy extends Entity {
     GamePanel gp;
     public Rectangle collisionBounds;
     private int moveSpeed = 2;
-    private BufferedImage goombaDer, goombaIzq;
+    private BufferedImage goombaDer, goombaIzq, goombaMuerto;
     public boolean isAlive = true;
     private int animationCounter = 0;
     private int animationSpeed = 15; // Cambia la imagen cada 15 frames
     public int deathTimer = 0; // Temporizador para mostrar el sprite de muerte
-    private final int deathDisplayDuration = 60; // 1 segundo a 60 FPS
+    private final int deathDisplayDuration = 15; // 0.25 segundos a 60 FPS (casi imperceptible)
 
     // Posición inicial
     private int initialX, initialY;
@@ -41,7 +41,10 @@ public class Enemy extends Entity {
         try {
             goombaDer = ImageIO.read(getClass().getResourceAsStream("/res/goomba_der.png"));
             goombaIzq = ImageIO.read(getClass().getResourceAsStream("/res/goomba_izq.png"));
+            goombaMuerto = ImageIO.read(getClass().getResourceAsStream("/res/goomba_muerto.png"));
+            System.out.println("✅ Sprites de Goomba cargados correctamente");
         } catch (IOException e) {
+            System.err.println("⚠️ Error al cargar sprites de Goomba");
             e.printStackTrace();
         }
     }
@@ -67,13 +70,15 @@ public class Enemy extends Entity {
 
         // Movimiento del enemigo
         if (direction.equals("Right")) {
-            if (!checkTileCollision("right")) {
+            // Verificar colisión con bloques y bordes
+            if (!checkTileCollision("right") && !isEdgeAhead("right")) {
                 worldX += moveSpeed;
             } else {
                 direction = "Left";
             }
         } else if (direction.equals("Left")) {
-            if (!checkTileCollision("left")) {
+            // Verificar colisión con bloques y bordes
+            if (!checkTileCollision("left") && !isEdgeAhead("left")) {
                 worldX -= moveSpeed;
             } else {
                 direction = "Right";
@@ -81,6 +86,20 @@ public class Enemy extends Entity {
         }
     }
 
+    // Método para verificar si hay un borde adelante (para evitar caer al vacío)
+    private boolean isEdgeAhead(String dir) {
+        int checkX = worldX;
+        if (dir.equals("right")) {
+            checkX += gp.tileSize; // Verificar un tile adelante
+        } else if (dir.equals("left")) {
+            checkX -= gp.tileSize;
+        }
+        
+        // Verificar si hay suelo debajo de la posición futura
+        int checkY = worldY + gp.tileSize + 5; // Un poco más abajo
+        return !checkTileCollisionAtPosition(checkX, checkY);
+    }
+    
     // Método para aplicar gravedad
     private void applyGravity() {
         // Si no está sobre el suelo, aumenta la velocidad de caída
@@ -89,7 +108,17 @@ public class Enemy extends Entity {
             if (fallSpeed > maxFallSpeed) {
                 fallSpeed = maxFallSpeed;
             }
-            worldY += fallSpeed;  // Mover hacia abajo
+            
+            // Verificar colisión antes de mover
+            int futureY = (int)(worldY + fallSpeed);
+            if (!checkTileCollisionAtPosition(worldX, futureY + gp.tileSize)) {
+                worldY += fallSpeed;  // Mover hacia abajo solo si no hay colisión
+            } else {
+                // Ajustar posición al suelo
+                int tileRow = (futureY + gp.tileSize) / gp.tileSize;
+                worldY = (tileRow * gp.tileSize) - gp.tileSize;
+                fallSpeed = 0;
+            }
         } else {
             fallSpeed = 0;  // Si está en el suelo, detener la caída
         }
@@ -160,12 +189,22 @@ public class Enemy extends Entity {
     }
 
     public void draw(Graphics2D g2, int cameraX, int cameraY) {
-
+        BufferedImage image;
+        
         if (!isAlive) {
-            return;  // No dibujar si el enemigo está muerto
+            // Mostrar sprite de Goomba muerto si el timer aún está activo
+            if (deathTimer > 0) {
+                image = goombaMuerto;
+                // Dibujar el Goomba muy aplastado: 1/4 de alto (casi una línea)
+                int deadHeight = gp.tileSize / 4; // Muy bajo (aplastado)
+                int deadY = (int) worldY - cameraY + (gp.tileSize - deadHeight); // Ajustar para que esté en el suelo
+                g2.drawImage(image, (int) worldX - cameraX, deadY, gp.tileSize, deadHeight, null);
+            }
+            return;  // No dibujar animación si está muerto
         }
 
-        BufferedImage image = (animationCounter < animationSpeed / 2) ? goombaDer : goombaIzq;
+        // Alternar entre sprites para animación
+        image = (animationCounter < animationSpeed / 2) ? goombaDer : goombaIzq;
 
         g2.drawImage(image, (int) worldX - cameraX, (int) worldY - cameraY, gp.tileSize, gp.tileSize, null);
     }

@@ -145,4 +145,13 @@ public class TileManager {
             }
         }
     }
+    
+    // Método para dibujar un solo tile en una posición específica
+    public void drawSingleTile(Graphics2D g2, int tileNum, int screenX, int screenY, int size) {
+        if (tileNum == 2) {
+            g2.drawImage(gifIcon.getImage(), screenX, screenY, size, size, null);
+        } else {
+            g2.drawImage(tile[tileNum].Image, screenX, screenY, size, size, null);
+        }
+    }
 }

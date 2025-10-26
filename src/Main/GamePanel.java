@@ -2,6 +2,8 @@ package Main;
 
 import Entity.Enemy;
 import Entity.Player;
+import Entity.PowerUp;
+import Entity.BrickParticle;
 import tile.TileManager;
 
 import java.awt.*;
@@ -37,14 +39,13 @@ public class GamePanel extends JPanel implements Runnable {
     int FPS = 60;
 
     // Manager de tiles y manejo de input
-    public TileManager tileM = new TileManager(this);
-    KeyHandler keyH = new KeyHandler();
-    
-    // Hilo para ejecutar el juego
+    public TileManager tileM;
+    public KeyHandler keyH = new KeyHandler();
+    public SpriteManager spriteManager; // Gestor de sprites
     Thread gameThread;
 
     // Jugador, enemigos y sistema de vidas
-    public Player player = new Player(this, keyH);
+    public Player player; // Inicializar después de SpriteManager
     public ArrayList<Enemy> enemies = new ArrayList<>();
     private int lives = 3;
     private boolean isGameOver = false;
@@ -64,6 +65,13 @@ public class GamePanel extends JPanel implements Runnable {
     private Image coinImage;   // Imagen de la moneda
     private Image nubeImage;
     
+    // Sistema de power-ups
+    public ArrayList<PowerUp> powerUps = new ArrayList<>();
+    public int luckyBlocksHit = 0; // Contador de lucky blocks golpeados
+    
+    // Sistema de partículas
+    public ArrayList<BrickParticle> brickParticles = new ArrayList<>();
+    
     private boolean isVictory = false; // Variable para verificar si el jugador ha ganado
     private long victoryStartTime = 0; // Tiempo en que se alcanza la victoria
     private final int victoryDelay = 5000; // 5 segundos antes de volver al menú
@@ -81,8 +89,16 @@ public class GamePanel extends JPanel implements Runnable {
         this.addKeyListener(keyH);
         this.setFocusable(true);
 
+        // Cargar sprites primero
+        spriteManager = new SpriteManager();
+        
+        // Ahora sí inicializar el jugador (después de SpriteManager)
+        player = new Player(this, keyH);
+        
         // Inicializar el menú
         menu = new Menu(this);
+
+        tileM = new TileManager(this);
 
         // Agregar enemigos en posiciones predeterminadas y almacenar sus posiciones iniciales
         enemies.add(new Enemy(this, 400, 576));
@@ -173,7 +189,8 @@ try {
             }
 
             if (timer >= 1000000000) {
-                System.out.println("FPS:" + drawCount);
+                // Debug: Mostrar FPS en consola (comentar en producción para mejor rendimiento)
+                // System.out.println("FPS:" + drawCount);
                 drawCount = 0;
                 timer = 0;
             }
@@ -203,17 +220,9 @@ try {
             player.update();
             
             // Verificar si Mario ha caído por debajo del límite inferior del mapa (fila 15)
-            if (player.worldY > maxWorldRow * tileSize) {
+            if (!player.isDead() && player.worldY > maxWorldRow * tileSize) {
                 player.die();
-                lives--;
-                if (lives > 0) {
-                    isDisplayingLives = true;
-                    lifeDisplayStartTime = System.currentTimeMillis();
-                    resetLevel(); // Reiniciar el nivel cuando Mario pierde una vida
-                } else {
-                    isGameOver = true;
-                    gameOverStartTime = System.currentTimeMillis(); // Iniciar el temporizador de Game Over
-                }
+                // La animación de muerte se encargará del resto
             }
             
             if (player.worldX >= tileSize * 200) {
@@ -223,20 +232,39 @@ try {
             }
 
 
-            for (Enemy enemy : enemies) {
-                enemy.update();
+            // Solo actualizar enemigos y power-ups si Mario NO está muerto
+            if (!player.isDead()) {
+                for (Enemy enemy : enemies) {
+                    enemy.update();
+                }
+                
+                // Actualizar power-ups
+                for (PowerUp powerUp : powerUps) {
+                    powerUp.update();
+                }
             }
-
+            
+            // Actualizar partículas
+            Iterator<BrickParticle> particleIterator = brickParticles.iterator();
+            while (particleIterator.hasNext()) {
+                BrickParticle particle = particleIterator.next();
+                particle.update();
+                if (!particle.isActive) {
+                    particleIterator.remove();
+                }
+            }
+            
             // Eliminar enemigos muertos después de la iteración
             Iterator<Enemy> iterator = enemies.iterator();
-        while (iterator.hasNext()) {
-            Enemy enemy = iterator.next();
-            if (!enemy.isAlive && enemy.deathTimer <= 0) {
-                iterator.remove();
+            while (iterator.hasNext()) {
+                Enemy enemy = iterator.next();
+                if (!enemy.isAlive && enemy.deathTimer <= 0) {
+                    iterator.remove();
+                }
             }
-        }
 
             checkCollisions();
+            checkPowerUpCollisions();
             updateCamera();
         }
     }
@@ -284,24 +312,39 @@ try {
             }
         } else {
             tileM.draw(g2, cameraX, cameraY);
+            
+            // Dibujar power-ups después del mapa (encima del cielo)
+            for (PowerUp powerUp : powerUps) {
+                powerUp.draw(g2, cameraX, cameraY);
+            }
+            
+            // Redibujar el lucky block encima del hongo si está spawneando
+            for (PowerUp powerUp : powerUps) {
+                if (powerUp.isSpawning()) {
+                    // Obtener la posición del bloque
+                    int blockCol = powerUp.worldX / tileSize;
+                    int blockRow = (powerUp.worldY + tileSize) / tileSize; // Bloque arriba del hongo
+                    
+                    // Redibujar solo ese tile específico
+                    if (blockCol >= 0 && blockCol < maxWorldCol && blockRow >= 0 && blockRow < maxWorldRow) {
+                        int tileNum = tileM.mapTileNum[blockCol][blockRow];
+                        if (tileNum == 3) { // Lucky block roto
+                            int x = blockCol * tileSize - cameraX;
+                            int y = blockRow * tileSize - cameraY;
+                            tileM.drawSingleTile(g2, tileNum, x, y, tileSize);
+                        }
+                    }
+                }
+            }
+            
             player.draw(g2, cameraX, cameraY);
             for (Enemy enemy : enemies) {
                 enemy.draw(g2, cameraX, cameraY);
             }
-
-            // Dibujar la cuadrícula de tiles
-            g2.setColor(new Color(255, 255, 255, 100)); // Color blanco semi-transparente
-
-            // Dibujar líneas verticales de la cuadrícula
-            for (int x = 0; x <= screenWidth; x += tileSize) {
-                int drawX = x - (cameraX % tileSize); // Ajustar según la posición de la cámara
-                g2.drawLine(drawX, 0, drawX, screenHeight);
-            }
-
-            // Dibujar líneas horizontales de la cuadrícula
-            for (int y = 0; y <= screenHeight; y += tileSize) {
-                int drawY = y - (cameraY % tileSize); // Ajustar según la posición de la cámara
-                g2.drawLine(0, drawY, screenWidth, drawY);
+            
+            // Dibujar partículas de ladrillos
+            for (BrickParticle particle : brickParticles) {
+                particle.draw(g2, cameraX, cameraY);
             }
 
             // Dibujar HUD y otros elementos de interfaz
@@ -342,23 +385,47 @@ try {
     public void checkCollisions() {
         for (Enemy enemy : enemies) {
             if (player.collisionBounds.intersects(enemy.collisionBounds) && enemy.isAlive) {
-                if (player.worldY + player.collisionBounds.height - 1 < enemy.worldY) {
+                // Calcular la parte inferior de Mario y la parte superior del enemigo
+                int marioBottom = (int)(player.worldY + player.collisionBounds.height);
+                int enemyTop = enemy.worldY;
+                
+                // Calcular el centro horizontal de Mario y del enemigo
+                int marioCenterX = (int)(player.worldX + player.collisionBounds.width / 2);
+                int enemyCenterX = enemy.worldX + enemy.collisionBounds.width / 2;
+                
+                // Distancia horizontal entre centros
+                int horizontalDistance = Math.abs(marioCenterX - enemyCenterX);
+                
+                // Mario mata al enemigo si:
+                // 1. Está cayendo (velocityY > 0)
+                // 2. La parte inferior de Mario está cerca de la parte superior del enemigo
+                // 3. Mario está razonablemente centrado sobre el enemigo (no en los extremos)
+                if (player.velocityY > 0 && 
+                    marioBottom <= enemyTop + 10 && 
+                    horizontalDistance < tileSize * 0.6) { // 60% del ancho del tile
+                    
                     enemy.die();
-                    player.worldY -= tileSize / 4;
+                    player.velocityY = -5; // Pequeño rebote
                 } else {
+                    // Colisión lateral o desde abajo - Mario muere
                     player.die();
-                    lives--;
-                    if (lives > 0) {
-                        isDisplayingLives = true;
-                        lifeDisplayStartTime = System.currentTimeMillis();
-                        resetLevel(); // Reiniciar el nivel cuando Mario pierde una vida
-                    } else {
-                        isGameOver = true;
-                        gameOverStartTime = System.currentTimeMillis(); // Iniciar el temporizador de Game Over
-                    }
+                    // No hacer nada más aquí, la animación se encargará
                     break;
                 }
             }
+        }
+    }
+    
+    // Método llamado cuando termina la animación de muerte de Mario
+    public void onPlayerDeathAnimationComplete() {
+        lives--;
+        if (lives > 0) {
+            isDisplayingLives = true;
+            lifeDisplayStartTime = System.currentTimeMillis();
+            resetLevel(); // Reiniciar el nivel cuando Mario pierde una vida
+        } else {
+            isGameOver = true;
+            gameOverStartTime = System.currentTimeMillis(); // Iniciar el temporizador de Game Over
         }
     }
 
@@ -373,19 +440,25 @@ try {
 
         // Reiniciar el jugador
         player.setDefaultValues();
+        player.killsCont = 0; // Resetear contador de kills
 
         // Reiniciar el estado de los bloques interactivos
         tileM.resetInteractiveTiles();
 
-        // Reiniciar el contador de monedas
+        // Reiniciar el contador de monedas y power-ups
         coinCount = 0;
+        powerUps.clear();
+        luckyBlocksHit = 0;
+        brickParticles.clear();
     }
 
     // Método para reiniciar el juego completo
     public void resetGame() {
         isGameOver = false; // Salir del estado de Game Over
+        isVictory = false;  // Salir del estado de victoria
         lives = 3;          // Restablecer las vidas del jugador
         player.setDefaultValues(); // Restablecer los valores del jugador
+        player.killsCont = 0; // Resetear contador de kills
         resetLevel();       // Reiniciar el nivel
         isInMenu = true;    // Volver al menú principal
     }
@@ -446,6 +519,46 @@ try {
         g2.drawString(text, (screenWidth - textWidth) / 2, screenHeight / 2);
     }
 
+    // Método para spawner un hongo
+    public void spawnMushroom(int x, int y) {
+        PowerUp mushroom = new PowerUp(this, x, y);
+        powerUps.add(mushroom);
+        System.out.println("¡Hongo spawneado!");
+    }
+    
+    // Método para spawner partículas de ladrillo roto
+    public void spawnBrickParticles(int x, int y) {
+        // Crear 4 partículas que vuelan en diferentes direcciones
+        Color brickColor = new Color(139, 69, 19); // Color marrón ladrillo
+        
+        // Partícula arriba-izquierda
+        brickParticles.add(new BrickParticle(this, x + tileSize/4, y + tileSize/4, -3, -8, brickColor));
+        
+        // Partícula arriba-derecha
+        brickParticles.add(new BrickParticle(this, x + 3*tileSize/4, y + tileSize/4, 3, -8, brickColor));
+        
+        // Partícula abajo-izquierda
+        brickParticles.add(new BrickParticle(this, x + tileSize/4, y + 3*tileSize/4, -2, -6, brickColor));
+        
+        // Partícula abajo-derecha
+        brickParticles.add(new BrickParticle(this, x + 3*tileSize/4, y + 3*tileSize/4, 2, -6, brickColor));
+    }
+    
+    // Método para verificar colisiones con power-ups
+    public void checkPowerUpCollisions() {
+        Iterator<PowerUp> iterator = powerUps.iterator();
+        while (iterator.hasNext()) {
+            PowerUp powerUp = iterator.next();
+            if (powerUp.isActive && !powerUp.isCollected) {
+                if (player.collisionBounds.intersects(powerUp.collisionBounds)) {
+                    player.powerUp(); // Hacer a Mario grande
+                    powerUp.collect();
+                    iterator.remove();
+                }
+            }
+        }
+    }
+    
     // Función para dibujar el nombre del jugador durante el cambio de nombre
     public void drawNameChange(Graphics2D g2) {
         g2.setFont(gameFont);
