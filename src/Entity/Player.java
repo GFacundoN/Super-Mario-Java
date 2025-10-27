@@ -152,11 +152,17 @@ public class Player extends Entity {
         Rectangle futureBounds = new Rectangle(futureX + 10, collisionY, gp.tileSize - 20, collisionHeight);
 
         // Limitar la búsqueda de tiles en torno al jugador para mejorar el rendimiento
+        // Para Mario grande, necesitamos buscar también en la fila superior
         int playerCol = (int) worldX / gp.tileSize;
         int playerRow = (int) worldY / gp.tileSize;
+        int topRow = isBig ? (int)(worldY - gp.tileSize) / gp.tileSize : playerRow;
+        
+        // Ajustar el rango de búsqueda para incluir la cabeza de Mario grande
+        int minRow = Math.max(0, topRow - 1);
+        int maxRow = Math.min(gp.tileM.mapTileNum[0].length - 1, playerRow + 1);
 
         for (int col = Math.max(0, playerCol - 1); col <= Math.min(gp.tileM.mapTileNum.length - 1, playerCol + 1); col++) {
-            for (int row = Math.max(0, playerRow - 1); row <= Math.min(gp.tileM.mapTileNum[0].length - 1, playerRow + 1); row++) {
+            for (int row = minRow; row <= maxRow; row++) {
                 int tileNum = gp.tileM.mapTileNum[col][row];
                 if (gp.tileM.tile[tileNum].collision) {
                     Rectangle tileBounds = new Rectangle(col * gp.tileSize, row * gp.tileSize, gp.tileSize, gp.tileSize);
@@ -181,9 +187,13 @@ public class Player extends Entity {
                         }
                         // Si colisiona por arriba
                         else if (direction.equals("up")) {
-                            // Solo si el jugador está dentro del área de colisión del bloque
-                            if (futureY + gp.tileSize > tileBounds.y && futureY < tileBounds.y + tileBounds.height) {
-                                worldY = tileBounds.y + tileBounds.height; // Ajustar Y para no "escalar"
+                            // Para Mario grande, verificar colisión con la cabeza (parte superior)
+                            int marioTop = isBig ? (int)worldY - gp.tileSize : (int)worldY;
+                            int tileBottom = tileBounds.y + tileBounds.height;
+                            
+                            // Solo si la cabeza de Mario está golpeando el bloque desde abajo
+                            if (marioTop < tileBottom && marioTop + (int)Math.abs(velocityY) >= tileBounds.y) {
+                                worldY = tileBounds.y + tileBounds.height + (isBig ? gp.tileSize : 0); // Ajustar Y para no "escalar"
                                 velocityY = 0; // Reiniciar velocidad vertical
                                 return true; // Se detecta colisión arriba
                             }
@@ -351,7 +361,12 @@ public class Player extends Entity {
         int playerCol = (int) worldX / gp.tileSize;
         // Calcular la posición de la cabeza de Mario (parte superior del collisionBounds)
         int headY = isBig ? (int)worldY - gp.tileSize : (int)worldY;
-        int playerRow = (headY - gp.tileSize) / gp.tileSize;
+        int playerRow = headY / gp.tileSize;
+        
+        // Ajustar playerRow para que apunte al bloque justo encima de la cabeza
+        if (velocityY < 0) {
+            playerRow = (headY + (int)velocityY) / gp.tileSize;
+        }
 
         // Verificar que playerCol y playerRow están dentro de los límites del array del mapa
         if (playerCol < 0 || playerCol >= gp.tileM.mapTileNum.length || playerRow < 0 || playerRow >= gp.tileM.mapTileNum[0].length) {
