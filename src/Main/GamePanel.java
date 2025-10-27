@@ -4,6 +4,8 @@ import Entity.Enemy;
 import Entity.Player;
 import Entity.PowerUp;
 import Entity.BrickParticle;
+import Entity.CoinAnimation;
+import Entity.BlockBump;
 import tile.TileManager;
 
 import java.awt.*;
@@ -71,6 +73,10 @@ public class GamePanel extends JPanel implements Runnable {
     
     // Sistema de partículas
     public ArrayList<BrickParticle> brickParticles = new ArrayList<>();
+    
+    // Efectos clásicos del Mario original
+    public ArrayList<CoinAnimation> coinAnimations = new ArrayList<>();
+    public ArrayList<BlockBump> blockBumps = new ArrayList<>();
     
     private boolean isVictory = false; // Variable para verificar si el jugador ha ganado
     private long victoryStartTime = 0; // Tiempo en que se alcanza la victoria
@@ -254,6 +260,26 @@ try {
                 }
             }
             
+            // Actualizar animaciones de monedas
+            Iterator<CoinAnimation> coinIterator = coinAnimations.iterator();
+            while (coinIterator.hasNext()) {
+                CoinAnimation coin = coinIterator.next();
+                coin.update();
+                if (!coin.isActive) {
+                    coinIterator.remove();
+                }
+            }
+            
+            // Actualizar animaciones de bloques saltando
+            Iterator<BlockBump> blockIterator = blockBumps.iterator();
+            while (blockIterator.hasNext()) {
+                BlockBump block = blockIterator.next();
+                block.update();
+                if (!block.isActive) {
+                    blockIterator.remove();
+                }
+            }
+            
             // Eliminar enemigos muertos después de la iteración
             Iterator<Enemy> iterator = enemies.iterator();
             while (iterator.hasNext()) {
@@ -311,7 +337,16 @@ try {
                 menu.drawMenu(g2);
             }
         } else {
+            // Dibujar tiles normales
             tileM.draw(g2, cameraX, cameraY);
+            
+            // Redibujar bloques que están saltando con offset
+            for (BlockBump blockBump : blockBumps) {
+                int tileNum = tileM.mapTileNum[blockBump.tileCol][blockBump.tileRow];
+                int x = blockBump.tileCol * tileSize - cameraX;
+                int y = blockBump.tileRow * tileSize - cameraY + (int)blockBump.getOffsetY();
+                tileM.drawSingleTile(g2, tileNum, x, y, tileSize);
+            }
             
             // Dibujar power-ups después del mapa (encima del cielo)
             for (PowerUp powerUp : powerUps) {
@@ -345,6 +380,11 @@ try {
             // Dibujar partículas de ladrillos
             for (BrickParticle particle : brickParticles) {
                 particle.draw(g2, cameraX, cameraY);
+            }
+            
+            // Dibujar animaciones de monedas
+            for (CoinAnimation coin : coinAnimations) {
+                coin.draw(g2, cameraX, cameraY);
             }
 
             // Dibujar HUD y otros elementos de interfaz
@@ -450,6 +490,8 @@ try {
         powerUps.clear();
         luckyBlocksHit = 0;
         brickParticles.clear();
+        coinAnimations.clear();
+        blockBumps.clear();
     }
 
     // Método para reiniciar el juego completo

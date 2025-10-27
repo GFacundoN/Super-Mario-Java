@@ -462,11 +462,16 @@ public class Player extends Entity {
             if (tileNum == 2) { // Lucky block
                 gp.tileM.mapTileNum[col][playerRow] = 3; // Cambia a bloque roto
                 
+                // Crear animación de bloque saltando
+                gp.blockBumps.add(new BlockBump(gp, col, playerRow));
+                
                 // Verificar si es el tercer lucky block (spawner hongo)
                 if (gp.luckyBlocksHit == 2) { // Tercer bloque (0, 1, 2)
                     gp.spawnMushroom(col * gp.tileSize, playerRow * gp.tileSize);
                 } else {
                     gp.coinCount++;
+                    // Crear animación de moneda saliendo del bloque
+                    gp.coinAnimations.add(new CoinAnimation(gp, col * gp.tileSize, playerRow * gp.tileSize));
                 }
                 gp.luckyBlocksHit++;
                 return; // Salir después de golpear un bloque
@@ -482,8 +487,10 @@ public class Player extends Entity {
                     // Hacer que Mario rebote hacia abajo
                     velocityY = 2; // Pequeño rebote hacia abajo
                     return; // Salir después de romper un bloque
+                } else {
+                    // Mario pequeño golpea el bloque (no lo rompe)
+                    gp.blockBumps.add(new BlockBump(gp, col, playerRow));
                 }
-                // Mario pequeño no puede romper ladrillos, pero sí golpea el bloque
             }
         }
     }
