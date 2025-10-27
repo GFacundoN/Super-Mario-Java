@@ -5,7 +5,7 @@ import java.awt.event.KeyListener;
 
 public class KeyHandler implements KeyListener {
     
-    public boolean upPressed, downPressed, leftPressed, rightPressed, shiftPressed, enterPressed;
+    public boolean upPressed, downPressed, leftPressed, rightPressed, shiftPressed, enterPressed, xPressed;
     public char lastKeyPressed = '\0'; // Última tecla presionada
     
     @Override
@@ -34,6 +34,9 @@ public class KeyHandler implements KeyListener {
         }
         if (code == KeyEvent.VK_ENTER) {
             enterPressed = true;
+        }
+        if (code == KeyEvent.VK_X) {
+            xPressed = true;  // Tecla X para disparar
         }
         
         // Guardar la última tecla presionada como carácter (para nombres)
@@ -65,6 +68,9 @@ public class KeyHandler implements KeyListener {
         }
         if (code == KeyEvent.VK_ENTER) {
             enterPressed = false;
+        }
+        if (code == KeyEvent.VK_X) {
+            xPressed = false;
         }
     }
 }

@@ -39,6 +39,7 @@ public class Player extends Entity {
     
     // Estado de power-up
     public boolean isBig = false; // Mario grande o pequeño
+    public boolean isFire = false; // Mario con poder de fuego
     private int powerUpTransitionTimer = 0; // Timer para animación de transformación
     
     // Estado de agacharse
@@ -48,6 +49,10 @@ public class Player extends Entity {
     private boolean isInvulnerable = false; // Invulnerabilidad temporal después de recibir daño
     private int invulnerabilityTimer = 0;
     private final int INVULNERABILITY_DURATION = 120; // 2 segundos a 60 FPS
+    
+    // Sistema de disparo
+    private int fireballCooldown = 0;
+    private final int FIREBALL_COOLDOWN_TIME = 20; // ~0.3 segundos entre disparos
 
     // Sprites Mario pequeño
     public BufferedImage StartRight, StartLeft, Der1, Der2, Der3, Left1, Left2, Left3, JumpD, JumpL;
@@ -55,6 +60,11 @@ public class Player extends Entity {
     // Sprites Mario grande
     public BufferedImage BigStartRight, BigStartLeft, BigDer1, BigDer2, BigDer3, BigLeft1, BigLeft2, BigLeft3, BigJumpD, BigJumpL;
     public BufferedImage BigCrouchRight, BigCrouchLeft; // Sprites de Mario agachado
+    
+    // Sprites Fire Mario
+    public BufferedImage FireStartRight, FireStartLeft, FireDer1, FireDer2, FireDer3, FireLeft1, FireLeft2, FireLeft3, FireJumpD, FireJumpL;
+    public BufferedImage FireCrouchRight, FireCrouchLeft;
+    public BufferedImage FireThrowRight, FireThrowLeft; // Sprites lanzando fireball
     
     // Sprite Mario muerto
     public BufferedImage DeadSprite;
@@ -80,10 +90,12 @@ public class Player extends Entity {
         deathAnimationStarted = false;
         deathAnimationTimer = 0;
         isBig = false; // Reiniciar a Mario pequeño
+        isFire = false; // Reiniciar Fire Mario
         powerUpTransitionTimer = 0;
         isCrouching = false; // Reiniciar estado agachado
         isInvulnerable = false; // Reiniciar invulnerabilidad
         invulnerabilityTimer = 0;
+        fireballCooldown = 0; // Reiniciar cooldown de fireball
     }
 
     public void getPlayerImage() {
@@ -129,10 +141,31 @@ public class Player extends Entity {
                 BigCrouchLeft = StartLeft;
             }
             
+            // Fire Mario
+            // Idle (quieto)
+            FireStartRight = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_der5.png"));
+            FireStartLeft = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_izq5.png"));
+            // Caminando
+            FireDer1 = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_der2.png"));
+            FireDer2 = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_der3.png"));
+            FireDer3 = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_der4.png"));
+            FireLeft1 = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_izq2.png"));
+            FireLeft2 = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_izq3.png"));
+            FireLeft3 = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_izq4.png"));
+            // Saltando
+            FireJumpD = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_der1png.png"));
+            FireJumpL = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_izq1.png"));
+            // Agachado
+            FireCrouchRight = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_der_agachado.png"));
+            FireCrouchLeft = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_izq_agachado.png"));
+            // Lanzando fireball
+            FireThrowRight = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_der_banana.png"));
+            FireThrowLeft = ImageIO.read(getClass().getResourceAsStream("/res/marioconflor_izq_banana.png"));
+            
             // Mario muerto
             DeadSprite = ImageIO.read(getClass().getResourceAsStream("/res/mario_dead.png"));
             
-            System.out.println("✅ Todos los sprites de Mario cargados correctamente");
+            System.out.println("✅ Todos los sprites de Mario cargados correctamente (incluido Fire Mario)");
         } catch (IOException e) {
             System.err.println("⚠️ Error al cargar sprites de Mario");
             e.printStackTrace();
@@ -144,8 +177,8 @@ public class Player extends Entity {
         collisionBounds.y = (int) worldY;
         
         // Ajustar altura de colisión según el tamaño de Mario y si está agachado
-        if (isBig && !isCrouching) {
-            collisionBounds.height = gp.tileSize * 2; // Mario grande: 2 tiles de alto
+        if ((isBig || isFire) && !isCrouching) {
+            collisionBounds.height = gp.tileSize * 2; // Mario grande o Fire: 2 tiles de alto
             collisionBounds.y = (int) worldY - gp.tileSize; // Ajustar Y para que los pies estén en el mismo lugar
         } else {
             collisionBounds.height = gp.tileSize; // Mario pequeño o agachado: 1 tile de alto
@@ -247,6 +280,17 @@ public class Player extends Entity {
             }
         }
         
+        // Actualizar cooldown de fireball
+        if (fireballCooldown > 0) {
+            fireballCooldown--;
+        }
+        
+        // Disparar fireball (tecla X) - solo si es Fire Mario
+        if (isFire && keyH.xPressed && fireballCooldown == 0) {
+            shootFireball();
+            fireballCooldown = FIREBALL_COOLDOWN_TIME;
+        }
+        
         // Manejar agacharse (solo si es grande, está en el suelo y no está saltando)
         if (isBig && keyH.downPressed && !jumping && !falling) {
             isCrouching = true;
@@ -312,7 +356,12 @@ public class Player extends Entity {
 
             // Lógica de salto y caída
             if (jumping) {
-                velocityY += gravity; // Aplicar gravedad primero
+                // Salto variable: si se suelta el botón mientras sube, aplicar más gravedad
+                if (velocityY < 0 && !keyH.upPressed) {
+                    velocityY += gravity * 2; // Doble gravedad si suelta el botón
+                } else {
+                    velocityY += gravity; // Gravedad normal
+                }
                 
                 // Limitar velocidad de caída
                 if (velocityY > maxFallSpeed) {
@@ -332,6 +381,7 @@ public class Player extends Entity {
                     falling = false;
                     velocityY = 0;
                     onPlatform = true;
+                    killsCont = 0; // Resetear combo al tocar el suelo
                     // Cambiar la animación al estado inicial (quieto en suelo) manteniendo la dirección
                     if (direction.equals("JumpD")) {
                         direction = "StartRight";
@@ -378,6 +428,7 @@ public class Player extends Entity {
                     falling = false;
                     velocityY = 0;
                     onPlatform = true;
+                    killsCont = 0; // Resetear combo al tocar el suelo
                     // Cambiar la animación al estado inicial si estaba en animación de salto
                     if (direction.equals("JumpD")) {
                         direction = "StartRight";
@@ -465,9 +516,11 @@ public class Player extends Entity {
                 // Crear animación de bloque saltando
                 gp.blockBumps.add(new BlockBump(gp, col, playerRow));
                 
-                // Verificar si es el tercer lucky block (spawner hongo)
-                if (gp.luckyBlocksHit == 2) { // Tercer bloque (0, 1, 2)
+                // Sistema de spawneo de power-ups
+                if (gp.luckyBlocksHit == 2) { // Tercer bloque → Hongo
                     gp.spawnMushroom(col * gp.tileSize, playerRow * gp.tileSize);
+                } else if (gp.luckyBlocksHit == 3) { // Cuarto bloque → Fire Flower
+                    gp.spawnFireFlower(col * gp.tileSize, playerRow * gp.tileSize);
                 } else {
                     gp.coinCount++;
                     // Crear animación de moneda saliendo del bloque
@@ -522,6 +575,56 @@ public class Player extends Entity {
         // Si está muerto, usar sprite de muerte
         if (isDead) {
             image = DeadSprite;
+        } else if (isFire) {
+            // Fire Mario - usar sprites de fuego (misma lógica que Mario grande)
+            if (isCrouching) {
+                // Mario agachado: altura de 1 tile
+                drawHeight = gp.tileSize;
+                drawY = (int) worldY - cameraY;
+            } else {
+                // Fire Mario normal: altura de 2 tiles
+                drawHeight = gp.tileSize * 2;
+                drawY = (int) worldY - cameraY - gp.tileSize;
+            }
+            
+            switch (direction) {
+                case "StartRight":
+                    image = FireStartRight;
+                    break;
+                case "StartLeft":
+                    image = FireStartLeft;
+                    break;
+                case "Right":
+                    if (spriteNum == 1) {
+                        image = FireDer1;
+                    } else if (spriteNum == 2) {
+                        image = FireDer2;
+                    } else if (spriteNum == 3) {
+                        image = FireDer3;
+                    }
+                    break;
+                case "Left":
+                    if (spriteNum == 1) {
+                        image = FireLeft1;
+                    } else if (spriteNum == 2) {
+                        image = FireLeft2;
+                    } else if (spriteNum == 3) {
+                        image = FireLeft3;
+                    }
+                    break;
+                case "JumpD":
+                    image = FireJumpD;
+                    break;
+                case "JumpL":
+                    image = FireJumpL;
+                    break;
+                case "CrouchRight":
+                    image = FireCrouchRight;
+                    break;
+                case "CrouchLeft":
+                    image = FireCrouchLeft;
+                    break;
+            }
         } else if (isBig) {
             // Mario grande - usar sprites grandes
             if (isCrouching) {
@@ -620,15 +723,21 @@ public class Player extends Entity {
             return; // Ya está muerto o es invulnerable, no hacer nada
         }
         
-        if (isBig) {
-            // Si es grande, solo se hace pequeño y se vuelve invulnerable
+        if (isFire) {
+            // Fire Mario → Mario Grande
+            isFire = false;
+            isInvulnerable = true;
+            invulnerabilityTimer = 0;
+            System.out.println("Fire Mario perdió el poder de fuego");
+        } else if (isBig) {
+            // Mario Grande → Mario Pequeño
             isBig = false;
             isCrouching = false; // Desactivar agacharse al hacerse pequeño
             isInvulnerable = true;
             invulnerabilityTimer = 0;
             System.out.println("Mario se hizo pequeño e invulnerable temporalmente");
         } else {
-            // Si es pequeño, muere
+            // Mario Pequeño → Muerto
             System.out.println("Mario ha muerto");
             isDead = true;
             deathAnimationStarted = false; // Resetear para iniciar animación
@@ -670,6 +779,28 @@ public class Player extends Entity {
     // Método para verificar si hay aire debajo del jugador
     public boolean isAirBelow() {
         return !checkCollision("down");
+    }
+    
+    // Método para disparar fireball
+    private void shootFireball() {
+        // Calcular posición de spawn del fireball
+        double fireballX = worldX + gp.tileSize / 2;
+        double fireballY = (isBig || isFire) ? worldY - gp.tileSize / 2 : worldY + gp.tileSize / 4;
+        
+        // Determinar dirección según el sprite actual
+        boolean facingRight = direction.contains("Right") || direction.contains("Der") || direction.equals("JumpD");
+        
+        // Crear fireball y agregarlo a GamePanel
+        gp.fireballs.add(new Fireball(gp, fireballX, fireballY, facingRight));
+        System.out.println("🔥 Fireball lanzado!");
+    }
+    
+    public void powerUpFire() {
+        if (!isFire) {
+            isBig = true; // Fire Mario también es grande
+            isFire = true;
+            System.out.println("🔥 Mario obtuvo el poder de fuego!");
+        }
     }
     
     // Método para verificar si el jugador está muerto

@@ -8,10 +8,16 @@ import javax.imageio.ImageIO;
 import Main.GamePanel;
 
 public class PowerUp {
+    public enum PowerUpType {
+        MUSHROOM,
+        FIRE_FLOWER
+    }
+    
     GamePanel gp;
     public int worldX, worldY;
     public Rectangle collisionBounds;
-    private BufferedImage mushroomImage;
+    private BufferedImage powerUpImage;
+    public PowerUpType type;
     public boolean isActive = true;
     public boolean isCollected = false;
 
@@ -29,25 +35,32 @@ public class PowerUp {
     private int spawnY;
     private int spawnSpeed = 1;
 
-    public PowerUp(GamePanel gp, int startX, int startY) {
+    public PowerUp(GamePanel gp, int startX, int startY, PowerUpType type) {
         this.gp = gp;
         this.worldX = startX;
         this.worldY = startY;
+        this.type = type;
         this.spawnY = startY - gp.tileSize;
         this.collisionBounds = new Rectangle(worldX, worldY, gp.tileSize, gp.tileSize);
         loadImage();
     }
+    
+    // Constructor legacy para compatibilidad (hongo por defecto)
+    public PowerUp(GamePanel gp, int startX, int startY) {
+        this(gp, startX, startY, PowerUpType.MUSHROOM);
+    }
 
     private void loadImage() {
         try {
-            // Cargar imagen individual directamente
-            mushroomImage = ImageIO.read(getClass().getResourceAsStream("/res/hongo.png"));
-            if (mushroomImage == null) {
-                System.err.println("Advertencia: hongo.png no encontrado - usando placeholder rojo");
+            // Cargar imagen según el tipo
+            String imagePath = (type == PowerUpType.MUSHROOM) ? "/res/hongo.png" : "/res/flor.png";
+            powerUpImage = ImageIO.read(getClass().getResourceAsStream(imagePath));
+            if (powerUpImage == null) {
+                System.err.println("Advertencia: " + imagePath + " no encontrado - usando placeholder");
             }
         } catch (Exception e) {
-            System.err.println("Advertencia: No se pudo cargar hongo.png - usando placeholder rojo");
-            mushroomImage = null;
+            System.err.println("Advertencia: No se pudo cargar imagen de power-up - usando placeholder");
+            powerUpImage = null;
         }
     }
 
@@ -64,6 +77,17 @@ public class PowerUp {
             return;
         }
 
+        // Fire Flower NO se mueve (como en el Mario original)
+        if (type == PowerUpType.FIRE_FLOWER) {
+            // Solo aplicar gravedad si no está en el suelo
+            if (!checkCollision("down")) {
+                applyGravity();
+            }
+            updateCollisionBounds();
+            return;
+        }
+
+        // Hongo SÍ se mueve
         if (direction.equals("Right")) {
             if (!checkCollision("right")) {
                 worldX += moveSpeed;
@@ -133,12 +157,18 @@ public class PowerUp {
     public void draw(Graphics2D g2, int cameraX, int cameraY) {
         if (!isActive || isCollected) return;
 
-        if (mushroomImage != null) {
-            g2.drawImage(mushroomImage, worldX - cameraX, worldY - cameraY, gp.tileSize, gp.tileSize, null);
+        if (powerUpImage != null) {
+            g2.drawImage(powerUpImage, worldX - cameraX, worldY - cameraY, gp.tileSize, gp.tileSize, null);
         } else {
-            // Placeholder rojo si no hay imagen
-            g2.setColor(java.awt.Color.RED);
+            // Placeholder rojo para hongo, naranja para flor
+            g2.setColor(type == PowerUpType.MUSHROOM ? java.awt.Color.RED : java.awt.Color.ORANGE);
             g2.fillRect(worldX - cameraX, worldY - cameraY, gp.tileSize, gp.tileSize);
+            // Dibujar "F" para Fire Flower
+            if (type == PowerUpType.FIRE_FLOWER) {
+                g2.setColor(java.awt.Color.WHITE);
+                g2.setFont(new java.awt.Font("Arial", java.awt.Font.BOLD, 20));
+                g2.drawString("F", worldX - cameraX + 12, worldY - cameraY + 24);
+            }
         }
     }
 

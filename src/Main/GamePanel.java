@@ -6,6 +6,7 @@ import Entity.PowerUp;
 import Entity.BrickParticle;
 import Entity.CoinAnimation;
 import Entity.BlockBump;
+import Entity.Fireball;
 import tile.TileManager;
 
 import java.awt.*;
@@ -77,6 +78,11 @@ public class GamePanel extends JPanel implements Runnable {
     // Efectos clásicos del Mario original
     public ArrayList<CoinAnimation> coinAnimations = new ArrayList<>();
     public ArrayList<BlockBump> blockBumps = new ArrayList<>();
+    public ArrayList<Fireball> fireballs = new ArrayList<>();
+    
+    // Timer del nivel (como en Mario original)
+    public int levelTimer = 400; // Segundos
+    private int timerCounter = 0; // Contador para decrementar cada segundo (60 frames)
     
     private boolean isVictory = false; // Variable para verificar si el jugador ha ganado
     private long victoryStartTime = 0; // Tiempo en que se alcanza la victoria
@@ -131,7 +137,6 @@ public class GamePanel extends JPanel implements Runnable {
         initialEnemyPositions.add(new Point(8200, 576));
         enemies.add(new Enemy(this, 8400, 576));
         initialEnemyPositions.add(new Point(8400, 576));
-
 
 try {
     // Carga de la fuente desde los recursos
@@ -280,6 +285,42 @@ try {
                 }
             }
             
+            // Actualizar fireballs
+            Iterator<Fireball> fireballIterator = fireballs.iterator();
+            while (fireballIterator.hasNext()) {
+                Fireball fireball = fireballIterator.next();
+                fireball.update();
+                
+                // Verificar colisiones con enemigos
+                for (Enemy enemy : enemies) {
+                    if (fireball.checkEnemyCollision(enemy)) {
+                        enemy.die();
+                        fireball.isActive = false;
+                        player.killsCont++;
+                        break;
+                    }
+                }
+                
+                // Remover fireballs inactivas
+                if (!fireball.isActive) {
+                    fireballIterator.remove();
+                }
+            }
+            
+            // Actualizar timer del nivel
+            timerCounter++;
+            if (timerCounter >= 60) { // 60 frames = 1 segundo
+                if (levelTimer > 0) {
+                    levelTimer--;
+                }
+                timerCounter = 0;
+                
+                // Game Over si se acaba el tiempo
+                if (levelTimer <= 0 && !player.isDead()) {
+                    player.die();
+                }
+            }
+            
             // Eliminar enemigos muertos después de la iteración
             Iterator<Enemy> iterator = enemies.iterator();
             while (iterator.hasNext()) {
@@ -386,7 +427,12 @@ try {
             for (CoinAnimation coin : coinAnimations) {
                 coin.draw(g2, cameraX, cameraY);
             }
-
+            
+            // Dibujar fireballs
+            for (Fireball fireball : fireballs) {
+                fireball.draw(g2, cameraX, cameraY);
+            }
+            
             // Dibujar HUD y otros elementos de interfaz
             g2.setFont(gameFont.deriveFont(Font.PLAIN, 24));
             g2.setColor(Color.white);
@@ -406,6 +452,16 @@ try {
             String coinText = " X " + coinCount;
             g2.drawString(coinText, coinX + scaledWidth + 10, coinY - 4 + textHeight / 4);
             g2.drawImage(nubeImage, 1100, 16, scaledWidth + 20, scaledHeight + 10, null);
+            
+            // Timer (arriba derecha) - Color rojo si queda poco tiempo
+            g2.setFont(gameFont.deriveFont(Font.PLAIN, 20));
+            if (levelTimer <= 100) {
+                g2.setColor(Color.RED); // Rojo cuando queda poco tiempo
+            } else {
+                g2.setColor(Color.WHITE);
+            }
+            g2.drawString("TIME", screenWidth - 150, 30);
+            g2.drawString(String.format("%03d", levelTimer), screenWidth - 150, 55);
         }
 
         g2.dispose();
@@ -492,6 +548,9 @@ try {
         brickParticles.clear();
         coinAnimations.clear();
         blockBumps.clear();
+        fireballs.clear();
+        levelTimer = 400;
+        timerCounter = 0;
     }
 
     // Método para reiniciar el juego completo
@@ -561,11 +620,18 @@ try {
         g2.drawString(text, (screenWidth - textWidth) / 2, screenHeight / 2);
     }
 
-    // Método para spawner un hongo
+    // Método para spawner un power-up (por defecto hongo)
     public void spawnMushroom(int x, int y) {
-        PowerUp mushroom = new PowerUp(this, x, y);
-        powerUps.add(mushroom);
+        PowerUp powerUp = new PowerUp(this, x, y, PowerUp.PowerUpType.MUSHROOM);
+        powerUps.add(powerUp);
         System.out.println("¡Hongo spawneado!");
+    }
+    
+    // Método para spawner Fire Flower
+    public void spawnFireFlower(int x, int y) {
+        PowerUp powerUp = new PowerUp(this, x, y, PowerUp.PowerUpType.FIRE_FLOWER);
+        powerUps.add(powerUp);
+        System.out.println("🔥 ¡Fire Flower spawneada!");
     }
     
     // Método para spawner partículas de ladrillo roto
@@ -591,9 +657,15 @@ try {
         Iterator<PowerUp> iterator = powerUps.iterator();
         while (iterator.hasNext()) {
             PowerUp powerUp = iterator.next();
-            if (powerUp.isActive && !powerUp.isCollected) {
+            // Solo colisionar si NO está spawneando (ya salió del bloque completamente)
+            if (powerUp.isActive && !powerUp.isCollected && !powerUp.isSpawning()) {
                 if (player.collisionBounds.intersects(powerUp.collisionBounds)) {
-                    player.powerUp(); // Hacer a Mario grande
+                    // Aplicar el power-up según su tipo
+                    if (powerUp.type == PowerUp.PowerUpType.FIRE_FLOWER) {
+                        player.powerUpFire(); // Dar poder de fuego
+                    } else {
+                        player.powerUp(); // Hacer a Mario grande (hongo)
+                    }
                     powerUp.collect();
                     iterator.remove();
                 }
