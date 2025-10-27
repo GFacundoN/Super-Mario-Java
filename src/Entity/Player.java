@@ -40,12 +40,21 @@ public class Player extends Entity {
     // Estado de power-up
     public boolean isBig = false; // Mario grande o pequeño
     private int powerUpTransitionTimer = 0; // Timer para animación de transformación
+    
+    // Estado de agacharse
+    public boolean isCrouching = false; // Mario agachado
+    
+    // Sistema de invulnerabilidad
+    private boolean isInvulnerable = false; // Invulnerabilidad temporal después de recibir daño
+    private int invulnerabilityTimer = 0;
+    private final int INVULNERABILITY_DURATION = 120; // 2 segundos a 60 FPS
 
     // Sprites Mario pequeño
     public BufferedImage StartRight, StartLeft, Der1, Der2, Der3, Left1, Left2, Left3, JumpD, JumpL;
     
     // Sprites Mario grande
     public BufferedImage BigStartRight, BigStartLeft, BigDer1, BigDer2, BigDer3, BigLeft1, BigLeft2, BigLeft3, BigJumpD, BigJumpL;
+    public BufferedImage BigCrouchRight, BigCrouchLeft; // Sprites de Mario agachado
     
     // Sprite Mario muerto
     public BufferedImage DeadSprite;
@@ -72,6 +81,9 @@ public class Player extends Entity {
         deathAnimationTimer = 0;
         isBig = false; // Reiniciar a Mario pequeño
         powerUpTransitionTimer = 0;
+        isCrouching = false; // Reiniciar estado agachado
+        isInvulnerable = false; // Reiniciar invulnerabilidad
+        invulnerabilityTimer = 0;
     }
 
     public void getPlayerImage() {
@@ -107,6 +119,16 @@ public class Player extends Entity {
             BigJumpD = ImageIO.read(getClass().getResourceAsStream("/res/mario_der1.png"));
             BigJumpL = ImageIO.read(getClass().getResourceAsStream("/res/mario_izq1.png"));
             
+            // Intentar cargar sprites de agachado (si no existen, usar sprites de Mario pequeño como fallback)
+            try {
+                BigCrouchRight = ImageIO.read(getClass().getResourceAsStream("/res/mario_der_agachado.png"));
+                BigCrouchLeft = ImageIO.read(getClass().getResourceAsStream("/res/mario_izq_agachado.png"));
+            } catch (Exception ex) {
+                System.out.println("⚠️ Sprites de agachado no encontrados, usando sprites de Mario pequeño como fallback");
+                BigCrouchRight = StartRight; // Usar sprite pequeño para evitar compresión
+                BigCrouchLeft = StartLeft;
+            }
+            
             // Mario muerto
             DeadSprite = ImageIO.read(getClass().getResourceAsStream("/res/mario_dead.png"));
             
@@ -121,12 +143,12 @@ public class Player extends Entity {
         collisionBounds.x = (int) worldX + 10;
         collisionBounds.y = (int) worldY;
         
-        // Ajustar altura de colisión según el tamaño de Mario
-        if (isBig) {
+        // Ajustar altura de colisión según el tamaño de Mario y si está agachado
+        if (isBig && !isCrouching) {
             collisionBounds.height = gp.tileSize * 2; // Mario grande: 2 tiles de alto
             collisionBounds.y = (int) worldY - gp.tileSize; // Ajustar Y para que los pies estén en el mismo lugar
         } else {
-            collisionBounds.height = gp.tileSize; // Mario pequeño: 1 tile de alto
+            collisionBounds.height = gp.tileSize; // Mario pequeño o agachado: 1 tile de alto
         }
     }
 
@@ -145,17 +167,17 @@ public class Player extends Entity {
             futureY += (int)velocityY; // Usar velocityY cuando sube
         }
 
-        // Ajustar altura según el tamaño de Mario
-        int collisionHeight = isBig ? gp.tileSize * 2 : gp.tileSize;
-        int collisionY = isBig ? futureY - gp.tileSize : futureY;
+        // Ajustar altura según el tamaño de Mario y si está agachado
+        int collisionHeight = (isBig && !isCrouching) ? gp.tileSize * 2 : gp.tileSize;
+        int collisionY = (isBig && !isCrouching) ? futureY - gp.tileSize : futureY;
         
         Rectangle futureBounds = new Rectangle(futureX + 10, collisionY, gp.tileSize - 20, collisionHeight);
 
         // Limitar la búsqueda de tiles en torno al jugador para mejorar el rendimiento
-        // Para Mario grande, necesitamos buscar también en la fila superior
+        // Para Mario grande (no agachado), necesitamos buscar también en la fila superior
         int playerCol = (int) worldX / gp.tileSize;
         int playerRow = (int) worldY / gp.tileSize;
-        int topRow = isBig ? (int)(worldY - gp.tileSize) / gp.tileSize : playerRow;
+        int topRow = (isBig && !isCrouching) ? (int)(worldY - gp.tileSize) / gp.tileSize : playerRow;
         
         // Ajustar el rango de búsqueda para incluir la cabeza de Mario grande
         int minRow = Math.max(0, topRow - 1);
@@ -187,13 +209,13 @@ public class Player extends Entity {
                         }
                         // Si colisiona por arriba
                         else if (direction.equals("up")) {
-                            // Para Mario grande, verificar colisión con la cabeza (parte superior)
-                            int marioTop = isBig ? (int)worldY - gp.tileSize : (int)worldY;
+                            // Para Mario grande (no agachado), verificar colisión con la cabeza (parte superior)
+                            int marioTop = (isBig && !isCrouching) ? (int)worldY - gp.tileSize : (int)worldY;
                             int tileBottom = tileBounds.y + tileBounds.height;
                             
                             // Solo si la cabeza de Mario está golpeando el bloque desde abajo
                             if (marioTop < tileBottom && marioTop + (int)Math.abs(velocityY) >= tileBounds.y) {
-                                worldY = tileBounds.y + tileBounds.height + (isBig ? gp.tileSize : 0); // Ajustar Y para no "escalar"
+                                worldY = tileBounds.y + tileBounds.height + ((isBig && !isCrouching) ? gp.tileSize : 0); // Ajustar Y para no "escalar"
                                 velocityY = 0; // Reiniciar velocidad vertical
                                 return true; // Se detecta colisión arriba
                             }
@@ -216,26 +238,63 @@ public class Player extends Entity {
             return; // No ejecutar el resto del update
         }
         
+        // Actualizar timer de invulnerabilidad
+        if (isInvulnerable) {
+            invulnerabilityTimer++;
+            if (invulnerabilityTimer >= INVULNERABILITY_DURATION) {
+                isInvulnerable = false;
+                invulnerabilityTimer = 0;
+            }
+        }
+        
+        // Manejar agacharse (solo si es grande, está en el suelo y no está saltando)
+        if (isBig && keyH.downPressed && !jumping && !falling) {
+            isCrouching = true;
+        } else {
+            // Si estaba agachado y deja de estarlo, restaurar la dirección normal
+            if (isCrouching) {
+                if (direction.equals("CrouchRight")) {
+                    direction = "StartRight";
+                } else if (direction.equals("CrouchLeft")) {
+                    direction = "StartLeft";
+                }
+            }
+            isCrouching = false;
+        }
+        
         // Actualizar el área de colisión
         updateCollisionBounds();
 
         checkEnemyCollision();
 
-        if (keyH.rightPressed) {
-            direction = "Right";
-            if (!checkCollision("right")) {
-                worldX += speed;
-            }
-        } else if (keyH.leftPressed) {
-            direction = "Left";
-            if (!checkCollision("left")) {
-                worldX -= speed;
+        // Movimiento horizontal (no se puede mover si está agachado)
+        if (!isCrouching) {
+            if (keyH.rightPressed) {
+                direction = "Right";
+                if (!checkCollision("right")) {
+                    worldX += speed;
+                }
+            } else if (keyH.leftPressed) {
+                direction = "Left";
+                if (!checkCollision("left")) {
+                    worldX -= speed;
+                }
+            } else {
+                // Solo cambiar a estado idle si NO está saltando o cayendo
+                if (!jumping && !falling) {
+                    if (direction.equals("Right")) {
+                        direction = "StartRight";
+                    } else if (direction.equals("Left")) {
+                        direction = "StartLeft";
+                    }
+                }
             }
         } else {
-            if (direction.equals("Right") || direction.equals("JumpD")) {
-                direction = "StartRight";
-            } else if (direction.equals("Left") || direction.equals("JumpL")) {
-                direction = "StartLeft";
+            // Si está agachado, mantener la dirección de agachado basándose en la última dirección
+            if (direction.equals("Right") || direction.equals("StartRight") || direction.equals("JumpD") || direction.equals("CrouchRight")) {
+                direction = "CrouchRight";
+            } else if (direction.equals("Left") || direction.equals("StartLeft") || direction.equals("JumpL") || direction.equals("CrouchLeft")) {
+                direction = "CrouchLeft";
             }
         }
 
@@ -243,8 +302,8 @@ public class Player extends Entity {
         speed = keyH.shiftPressed ? sprintSpeed : normalSpeed;
 
         if (!isDead) {
-            // Saltar solo si está en el suelo o en una plataforma
-            if (keyH.upPressed && !jumping && !falling && (onPlatform || !isAirBelow())) {
+            // Saltar solo si está en el suelo o en una plataforma y no está agachado
+            if (keyH.upPressed && !jumping && !falling && !isCrouching && (onPlatform || !isAirBelow())) {
                 jumping = true;
                 falling = false;
                 velocityY = jumpSpeed;
@@ -273,8 +332,12 @@ public class Player extends Entity {
                     falling = false;
                     velocityY = 0;
                     onPlatform = true;
-                    // Cambiar la animación al estado inicial (quieto en suelo)
-                    direction = direction.equals("JumpD") ? "StartRight" : "StartLeft";
+                    // Cambiar la animación al estado inicial (quieto en suelo) manteniendo la dirección
+                    if (direction.equals("JumpD")) {
+                        direction = "StartRight";
+                    } else if (direction.equals("JumpL")) {
+                        direction = "StartLeft";
+                    }
                 } else {
                     // Solo mover si NO hay colisión
                     worldY += velocityY;
@@ -315,6 +378,12 @@ public class Player extends Entity {
                     falling = false;
                     velocityY = 0;
                     onPlatform = true;
+                    // Cambiar la animación al estado inicial si estaba en animación de salto
+                    if (direction.equals("JumpD")) {
+                        direction = "StartRight";
+                    } else if (direction.equals("JumpL")) {
+                        direction = "StartLeft";
+                    }
                 }
             } else {
                 // Si no está cayendo ni saltando, asegurar que la velocidad se detenga
@@ -358,48 +427,64 @@ public class Player extends Entity {
             return; // No golpear bloques si está cayendo o quieto
         }
         
-        int playerCol = (int) worldX / gp.tileSize;
         // Calcular la posición de la cabeza de Mario (parte superior del collisionBounds)
-        int headY = isBig ? (int)worldY - gp.tileSize : (int)worldY;
+        int headY = (isBig && !isCrouching) ? (int)worldY - gp.tileSize : (int)worldY;
         int playerRow = headY / gp.tileSize;
         
         // Ajustar playerRow para que apunte al bloque justo encima de la cabeza
         if (velocityY < 0) {
             playerRow = (headY + (int)velocityY) / gp.tileSize;
         }
-
-        // Verificar que playerCol y playerRow están dentro de los límites del array del mapa
-        if (playerCol < 0 || playerCol >= gp.tileM.mapTileNum.length || playerRow < 0 || playerRow >= gp.tileM.mapTileNum[0].length) {
-            return; // Salir del método si está fuera de los límites
-        }
-
-        int tileNum = gp.tileM.mapTileNum[playerCol][playerRow];
-
-        // Detecta si es un Lucky Block y cambia su estado
-        if (tileNum == 2) { // Lucky block
-            gp.tileM.mapTileNum[playerCol][playerRow] = 3; // Cambia a bloque roto
-            
-            // Verificar si es el tercer lucky block (spawner hongo)
-            if (gp.luckyBlocksHit == 2) { // Tercer bloque (0, 1, 2)
-                gp.spawnMushroom(playerCol * gp.tileSize, playerRow * gp.tileSize);
-            } else {
-                gp.coinCount++;
-            }
-            gp.luckyBlocksHit++;
+        
+        // Verificar que playerRow está dentro de los límites
+        if (playerRow < 0 || playerRow >= gp.tileM.mapTileNum[0].length) {
+            return;
         }
         
-        // Manejo de ladrillos (tile 1)
-        if (tileNum == 1) {
-            if (isBig) {
-                // Mario grande rompe el ladrillo
-                gp.tileM.mapTileNum[playerCol][playerRow] = 5; // Cambiar a cielo (romper)
-                gp.spawnBrickParticles(playerCol * gp.tileSize, playerRow * gp.tileSize); // Crear partículas
-                
-                
-                // Hacer que Mario rebote hacia abajo
-                velocityY = 2; // Pequeño rebote hacia abajo
+        // Calcular el rango de columnas que la cabeza de Mario puede estar tocando
+        // collisionBounds tiene un offset de +10 y ancho de tileSize - 20
+        int leftX = (int)worldX + 10;
+        int rightX = (int)worldX + gp.tileSize - 10;
+        
+        int leftCol = leftX / gp.tileSize;
+        int rightCol = rightX / gp.tileSize;
+        
+        // Verificar todos los tiles que la cabeza de Mario puede estar tocando
+        for (int col = leftCol; col <= rightCol; col++) {
+            // Verificar límites de columna
+            if (col < 0 || col >= gp.tileM.mapTileNum.length) {
+                continue;
             }
-            // Mario pequeño no puede romper ladrillos
+            
+            int tileNum = gp.tileM.mapTileNum[col][playerRow];
+
+            // Detecta si es un Lucky Block y cambia su estado
+            if (tileNum == 2) { // Lucky block
+                gp.tileM.mapTileNum[col][playerRow] = 3; // Cambia a bloque roto
+                
+                // Verificar si es el tercer lucky block (spawner hongo)
+                if (gp.luckyBlocksHit == 2) { // Tercer bloque (0, 1, 2)
+                    gp.spawnMushroom(col * gp.tileSize, playerRow * gp.tileSize);
+                } else {
+                    gp.coinCount++;
+                }
+                gp.luckyBlocksHit++;
+                return; // Salir después de golpear un bloque
+            }
+            
+            // Manejo de ladrillos (tile 1)
+            if (tileNum == 1) {
+                if (isBig) {
+                    // Mario grande rompe el ladrillo
+                    gp.tileM.mapTileNum[col][playerRow] = 5; // Cambiar a cielo (romper)
+                    gp.spawnBrickParticles(col * gp.tileSize, playerRow * gp.tileSize); // Crear partículas
+                    
+                    // Hacer que Mario rebote hacia abajo
+                    velocityY = 2; // Pequeño rebote hacia abajo
+                    return; // Salir después de romper un bloque
+                }
+                // Mario pequeño no puede romper ladrillos, pero sí golpea el bloque
+            }
         }
     }
 
@@ -414,6 +499,9 @@ public class Player extends Entity {
                     killsCont++;
                     jumping = true;  // Mario puede rebotar tras eliminar al enemigo
                     velocityY = jumpSpeed / 2;  // Mario salta al golpear desde arriba
+                } else if (!isInvulnerable) {
+                    // Mario es golpeado por el enemigo (solo si no es invulnerable)
+                    die();
                 }
             }
         }
@@ -429,8 +517,15 @@ public class Player extends Entity {
             image = DeadSprite;
         } else if (isBig) {
             // Mario grande - usar sprites grandes
-            drawHeight = gp.tileSize * 2; // Mario grande es el doble de alto
-            drawY = (int) worldY - cameraY - gp.tileSize; // Ajustar posición para que los pies estén en el mismo lugar
+            if (isCrouching) {
+                // Mario agachado: altura de 1 tile
+                drawHeight = gp.tileSize;
+                drawY = (int) worldY - cameraY;
+            } else {
+                // Mario grande normal: altura de 2 tiles
+                drawHeight = gp.tileSize * 2;
+                drawY = (int) worldY - cameraY - gp.tileSize;
+            }
             
             switch (direction) {
                 case "StartRight":
@@ -462,6 +557,12 @@ public class Player extends Entity {
                     break;
                 case "JumpL":
                     image = BigJumpL;
+                    break;
+                case "CrouchRight":
+                    image = BigCrouchRight;
+                    break;
+                case "CrouchLeft":
+                    image = BigCrouchLeft;
                     break;
             }
         } else {
@@ -500,19 +601,25 @@ public class Player extends Entity {
             }
         }
 
-        g2.drawImage(image, (int) worldX - cameraX, drawY, gp.tileSize, drawHeight, null);
+        // Efecto de parpadeo cuando es invulnerable (dibujar solo en frames pares)
+        if (!isInvulnerable || (invulnerabilityTimer / 5) % 2 == 0) {
+            g2.drawImage(image, (int) worldX - cameraX, drawY, gp.tileSize, drawHeight, null);
+        }
     }
     
     public void die() {
         // Evitar múltiples llamadas
-        if (isDead) {
-            return; // Ya está muerto, no hacer nada
+        if (isDead || isInvulnerable) {
+            return; // Ya está muerto o es invulnerable, no hacer nada
         }
         
         if (isBig) {
-            // Si es grande, solo se hace pequeño
+            // Si es grande, solo se hace pequeño y se vuelve invulnerable
             isBig = false;
-            System.out.println("Mario se hizo pequeño");
+            isCrouching = false; // Desactivar agacharse al hacerse pequeño
+            isInvulnerable = true;
+            invulnerabilityTimer = 0;
+            System.out.println("Mario se hizo pequeño e invulnerable temporalmente");
         } else {
             // Si es pequeño, muere
             System.out.println("Mario ha muerto");
