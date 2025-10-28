@@ -4,6 +4,8 @@ import Main.GamePanel;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 
 public class Fireball {
     private GamePanel gp;
@@ -19,55 +21,61 @@ public class Fireball {
     private final int maxLifetime = 180; // 3 segundos
     private int animationFrame = 0;
     private int animationCounter = 0;
+    private BufferedImage[] fireballSprites = new BufferedImage[4];
+    private int currentFrame = 0;
     
     public Fireball(GamePanel gp, double x, double y, boolean facingRight) {
         this.gp = gp;
         this.worldX = x;
         this.worldY = y;
-        this.velocityX = facingRight ? 8 : -8; // Velocidad horizontal
-        this.velocityY = -3; // Pequeño impulso hacia arriba
+        this.velocityX = facingRight ? 8 : -8;
+        this.velocityY = -3;
         this.collisionBounds = new Rectangle((int)x, (int)y, gp.tileSize / 2, gp.tileSize / 2);
+        
+        // Cargar sprites de fireball (4 frames para animación)
+        try {
+            fireballSprites[0] = ImageIO.read(getClass().getResourceAsStream("/res/fireball.png"));
+            fireballSprites[1] = ImageIO.read(getClass().getResourceAsStream("/res/fireball2.png"));
+            fireballSprites[2] = ImageIO.read(getClass().getResourceAsStream("/res/fireball3.png"));
+            fireballSprites[3] = ImageIO.read(getClass().getResourceAsStream("/res/fireball4.png"));
+        } catch (Exception e) {
+            System.err.println("⚠️ No se pudieron cargar sprites de fireball");
+            fireballSprites[0] = null;
+        }
     }
     
     public void update() {
-        // Aplicar física
         velocityY += gravity;
         worldX += velocityX;
         worldY += velocityY;
         
-        // Actualizar bounds
         collisionBounds.x = (int) worldX;
         collisionBounds.y = (int) worldY;
         
-        // Verificar colisión con el suelo para rebotar
         if (checkGroundCollision()) {
             velocityY = -4; // Rebote
             bounceCount++;
             
             if (bounceCount >= maxBounces) {
-                isActive = false; // Desaparecer después de 3 rebotes
+                isActive = false;
             }
         }
         
-        // Verificar colisión con paredes
         if (checkWallCollision()) {
             isActive = false;
         }
         
-        // Incrementar lifetime
         lifetime++;
         if (lifetime >= maxLifetime) {
             isActive = false;
         }
         
-        // Animación
         animationCounter++;
-        if (animationCounter > 4) {
-            animationFrame = (animationFrame + 1) % 4;
+        if (animationCounter > 2) {
+            currentFrame = (currentFrame + 1) % 4;
             animationCounter = 0;
         }
         
-        // Desactivar si sale de la pantalla
         if (worldY > gp.screenHeight || worldX < 0 || worldX > gp.maxWorldCol * gp.tileSize) {
             isActive = false;
         }
@@ -107,19 +115,21 @@ public class Fireball {
             int drawY = (int) worldY - cameraY;
             int size = gp.tileSize / 2;
             
-            // Dibujar fireball (círculo rojo/naranja animado)
-            Color color1 = new Color(255, 100, 0); // Naranja
-            Color color2 = new Color(255, 200, 0); // Amarillo
-            
-            // Alternar colores para efecto de fuego
-            Color currentColor = (animationFrame % 2 == 0) ? color1 : color2;
-            
-            g2.setColor(currentColor);
-            g2.fillOval(drawX, drawY, size, size);
-            
-            // Agregar brillo en el centro
-            g2.setColor(Color.WHITE);
-            g2.fillOval(drawX + size/4, drawY + size/4, size/2, size/2);
+            // Usar sprite animado si está cargado
+            if (fireballSprites[0] != null) {
+                g2.drawImage(fireballSprites[currentFrame], drawX, drawY, size, size, null);
+            } else {
+                Color color1 = new Color(255, 100, 0);
+                Color color2 = new Color(255, 200, 0);
+                
+                Color currentColor = (animationFrame % 2 == 0) ? color1 : color2;
+                
+                g2.setColor(currentColor);
+                g2.fillOval(drawX, drawY, size, size);
+                
+                g2.setColor(Color.WHITE);
+                g2.fillOval(drawX + size/4, drawY + size/4, size/2, size/2);
+            }
         }
     }
     
