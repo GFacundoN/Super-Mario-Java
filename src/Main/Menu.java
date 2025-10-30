@@ -94,9 +94,10 @@ public class Menu {
     public void selectMenuOption() {
         if (selectedOption == 0) {
             if (gp.playerName.isEmpty()) {
-                gp.playerName = "MARIO"; // Nombre predeterminado si no se ingresó uno
+                gp.playerName = "MARIO";
             }
-            gp.isInMenu = false; // Empezar el juego
+            gp.startNewGame();
+            gp.isInMenu = false;
         } else if (selectedOption == 1) {
             isChangingName = true; // Cambiar a modo de cambio de nombre
         } else if (selectedOption == 2) {

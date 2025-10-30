@@ -8,6 +8,7 @@ import Entity.CoinAnimation;
 import Entity.BlockBump;
 import Entity.Fireball;
 import Entity.Castle;
+import Entity.FlagPole;
 import tile.TileManager;
 
 import java.awt.*;
@@ -42,6 +43,7 @@ public class GamePanel extends JPanel implements Runnable {
     public KeyHandler keyH = new KeyHandler();
     public SpriteManager spriteManager;
     public SoundManager soundManager;
+    public MusicManager musicManager;
     Thread gameThread;
 
     public Player player;
@@ -74,12 +76,19 @@ public class GamePanel extends JPanel implements Runnable {
     
     public int levelTimer = 400;
     private int timerCounter = 0;
+    private boolean hurryUpPlayed = false;
     
     public Castle castle;
+    public FlagPole flagPole;
     
     private boolean isVictory = false;
+    private boolean isTouchingFlag = false;
+    private boolean isWalkingToCastle = false;
     private long victoryStartTime = 0;
     private final int victoryDelay = 5000;
+    
+    private boolean isPaused = false;
+    private int gameStartFrameCounter = 0;
 
     private Menu menu;
 
@@ -94,6 +103,7 @@ public class GamePanel extends JPanel implements Runnable {
 
         spriteManager = new SpriteManager();
         soundManager = new SoundManager();
+        musicManager = new MusicManager();
         
         player = new Player(this, keyH);
         
@@ -128,6 +138,10 @@ public class GamePanel extends JPanel implements Runnable {
         int castleX = (maxWorldCol - 6) * tileSize;
         int castleY = 335;
         castle = new Castle(this, castleX, castleY);
+        
+        int flagPoleX = (maxWorldCol - 10) * tileSize;
+        int flagPoleY = 576 - (97 * 3) + 30;
+        flagPole = new FlagPole(this, flagPoleX, flagPoleY);
 
 try {
     InputStream fontStream = getClass().getResourceAsStream("/res/PressStart2P.ttf");
@@ -213,28 +227,74 @@ try {
             }
             return;
         }
+        
+        if (!isInMenu && keyH.pausePressed) {
+            isPaused = !isPaused;
+            if (isPaused) {
+                musicManager.pauseMusic();
+            } else {
+                musicManager.resumeMusic();
+            }
+            keyH.pausePressed = false;
+            return;
+        }
+        
+        if (isPaused) {
+            return;
+        }
 
         if (isInMenu) {
+            soundManager.stopAllSounds();
+            musicManager.stopMusic();
             if (menu.isChangingName()) {
                 updateNameChange();
             } else {
                 menu.updateMenu();
             }
+            return;
         } else {
-            player.update();
+            if (!musicManager.isPlaying() && !isGameOver && !isVictory) {
+                musicManager.playMusic(MusicManager.GROUND_THEME, true);
+            }
             
-            if (!player.isDead() && player.worldY > maxWorldRow * tileSize) {
+            gameStartFrameCounter++;
+            
+            if (!isTouchingFlag && !isVictory && gameStartFrameCounter > 10 && player.collisionBounds.intersects(flagPole.collisionBounds)) {
+                isTouchingFlag = true;
+                flagPole.touchFlag();
+                musicManager.stopMusic();
+                soundManager.stopAllSounds();
+                soundManager.playSound(SoundManager.STAGE_CLEAR);
+            }
+            
+            if (isTouchingFlag && !isVictory) {
+                flagPole.update();
+                
+                if (flagPole.isFlagAtBottom() && !isWalkingToCastle) {
+                    isWalkingToCastle = true;
+                }
+                
+                if (isWalkingToCastle) {
+                    if (player.worldX < castle.worldX - tileSize) {
+                        player.worldX += 3;
+                        player.direction = "Right";
+                    } else if (!isVictory) {
+                        isVictory = true;
+                        victoryStartTime = System.currentTimeMillis();
+                    }
+                }
+            }
+            
+            if (!isTouchingFlag) {
+                player.update();
+            }
+            
+            if (!player.isDead() && !isVictory && player.worldY > maxWorldRow * tileSize) {
                 player.dieInstantly();
             }
-            
-            if (player.worldX >= tileSize * 200) {
-                isVictory = true;
-                victoryStartTime = System.currentTimeMillis();
-                return;
-            }
 
 
-            if (!player.isDead()) {
+            if (!player.isDead() && !isVictory && !isTouchingFlag) {
                 for (Enemy enemy : enemies) {
                     enemy.update();
                 }
@@ -291,15 +351,22 @@ try {
                 }
             }
             
-            timerCounter++;
-            if (timerCounter >= 60) {
-                if (levelTimer > 0) {
-                    levelTimer--;
-                }
-                timerCounter = 0;
-                
-                if (levelTimer <= 0 && !player.isDead()) {
-                    player.die();
+            if (!isVictory) {
+                timerCounter++;
+                if (timerCounter >= 60) {
+                    if (levelTimer > 0) {
+                        levelTimer--;
+                    }
+                    timerCounter = 0;
+                    
+                    if (levelTimer == 100 && !hurryUpPlayed) {
+                        hurryUpPlayed = true;
+                        soundManager.playSound(SoundManager.HURRY_UP);
+                    }
+                    
+                    if (levelTimer <= 0 && !player.isDead()) {
+                        player.die();
+                    }
                 }
             }
             
@@ -338,6 +405,8 @@ try {
         if (isVictory) {
             drawVictoryScreen(g2);
             if (System.currentTimeMillis() - victoryStartTime > victoryDelay) {
+                soundManager.stopAllSounds();
+                musicManager.stopMusic();
                 resetGame();
             }
             g2.dispose();
@@ -350,6 +419,28 @@ try {
             } else {
                 menu.drawMenu(g2);
             }
+        } else if (isPaused) {
+            tileM.draw(g2, cameraX, cameraY);
+            
+            if (castle != null) {
+                castle.draw(g2, cameraX, cameraY);
+            }
+            
+            player.draw(g2, cameraX, cameraY);
+            for (Enemy enemy : enemies) {
+                enemy.draw(g2, cameraX, cameraY);
+            }
+            
+            for (PowerUp powerUp : powerUps) {
+                powerUp.draw(g2, cameraX, cameraY);
+            }
+            
+            if (flagPole != null) {
+                flagPole.draw(g2, cameraX, cameraY);
+            }
+            
+            drawHUD(g2);
+            drawPauseScreen(g2);
         } else {
             tileM.draw(g2, cameraX, cameraY);
             
@@ -384,6 +475,10 @@ try {
                 castle.draw(g2, cameraX, cameraY);
             }
             
+            if (flagPole != null) {
+                flagPole.draw(g2, cameraX, cameraY);
+            }
+            
             player.draw(g2, cameraX, cameraY);
             for (Enemy enemy : enemies) {
                 enemy.draw(g2, cameraX, cameraY);
@@ -401,32 +496,7 @@ try {
                 fireball.draw(g2, cameraX, cameraY);
             }
             
-            g2.setFont(gameFont.deriveFont(Font.PLAIN, 24));
-            g2.setColor(Color.white);
-            g2.drawString(playerName, 32, 50);
-
-            g2.setFont(gameFont.deriveFont(Font.PLAIN, 24));
-            FontMetrics fm = g2.getFontMetrics();
-            int textHeight = fm.getAscent();
-
-            int scaledWidth = textHeight;
-            int scaledHeight = textHeight + 5;
-            int coinX = screenWidth / 2 - 40;
-            int coinY = 50;
-            g2.drawImage(coinImage, coinX, coinY - textHeight - 2, scaledWidth, scaledHeight, null);
-
-            String coinText = " X " + coinCount;
-            g2.drawString(coinText, coinX + scaledWidth + 10, coinY - 4 + textHeight / 4);
-            g2.drawImage(nubeImage, 1100, 16, scaledWidth + 20, scaledHeight + 10, null);
-            
-            g2.setFont(gameFont.deriveFont(Font.PLAIN, 20));
-            if (levelTimer <= 100) {
-                g2.setColor(Color.RED);
-            } else {
-                g2.setColor(Color.WHITE);
-            }
-            g2.drawString("TIME", screenWidth - 150, 30);
-            g2.drawString(String.format("%03d", levelTimer), screenWidth - 150, 55);
+            drawHUD(g2);
         }
 
         g2.dispose();
@@ -457,6 +527,7 @@ try {
                     
                     enemy.die();
                     player.velocityY = -5;
+                    soundManager.playSound(SoundManager.KICK_KILL);
                 } else {
                     player.die();
                     break;
@@ -474,6 +545,7 @@ try {
         } else {
             isGameOver = true;
             gameOverStartTime = System.currentTimeMillis();
+            musicManager.stopMusic();
             soundManager.playSound(SoundManager.GAME_OVER);
         }
     }
@@ -499,16 +571,42 @@ try {
         fireballs.clear();
         levelTimer = 400;
         timerCounter = 0;
+        hurryUpPlayed = false;
+        isTouchingFlag = false;
+        isWalkingToCastle = false;
+        
+        if (flagPole != null) {
+            flagPole.reset();
+        }
     }
 
     public void resetGame() {
         isGameOver = false;
         isVictory = false;
+        isTouchingFlag = false;
+        isWalkingToCastle = false;
         lives = 3;
         player.setDefaultValues();
         player.killsCont = 0;
+        musicManager.stopMusic();
+        soundManager.stopAllSounds();
         resetLevel();
         isInMenu = true;
+    }
+    
+    public void startNewGame() {
+        isTouchingFlag = false;
+        isWalkingToCastle = false;
+        isVictory = false;
+        isGameOver = false;
+        isPaused = false;
+        
+        resetLevel();
+        
+        player.setDefaultValues();
+        player.updateCollisionBounds();
+        player.direction = "Right";
+        gameStartFrameCounter = 0;
     }
 
     public void updateNameChange() {
@@ -635,6 +733,51 @@ try {
         String enemiesText = "Enemigos eliminados: " + player.killsCont;
         int enemiesTextWidth = g2.getFontMetrics().stringWidth(enemiesText);
         g2.drawString(enemiesText, (screenWidth - enemiesTextWidth) / 2, screenHeight / 2 + 50);
+    }
+    
+    public void drawHUD(Graphics2D g2) {
+        g2.setFont(gameFont.deriveFont(Font.PLAIN, 24));
+        g2.setColor(Color.white);
+        g2.drawString(playerName, 32, 50);
+
+        g2.setFont(gameFont.deriveFont(Font.PLAIN, 24));
+        FontMetrics fm = g2.getFontMetrics();
+        int textHeight = fm.getAscent();
+
+        int scaledWidth = textHeight;
+        int scaledHeight = textHeight + 5;
+        int coinX = screenWidth / 2 - 40;
+        int coinY = 50;
+        g2.drawImage(coinImage, coinX, coinY - textHeight - 2, scaledWidth, scaledHeight, null);
+
+        String coinText = " X " + coinCount;
+        g2.drawString(coinText, coinX + scaledWidth + 10, coinY - 4 + textHeight / 4);
+        g2.drawImage(nubeImage, 1100, 16, scaledWidth + 20, scaledHeight + 10, null);
+        
+        g2.setFont(gameFont.deriveFont(Font.PLAIN, 20));
+        if (levelTimer <= 100) {
+            g2.setColor(Color.RED);
+        } else {
+            g2.setColor(Color.WHITE);
+        }
+        g2.drawString("TIME", screenWidth - 150, 30);
+        g2.drawString(String.format("%03d", levelTimer), screenWidth - 150, 55);
+    }
+    
+    public void drawPauseScreen(Graphics2D g2) {
+        g2.setColor(new Color(0, 0, 0, 180));
+        g2.fillRect(0, 0, screenWidth, screenHeight);
+        
+        g2.setFont(gameFont.deriveFont(Font.BOLD, 48));
+        g2.setColor(Color.WHITE);
+        String pauseText = "PAUSA";
+        int textWidth = g2.getFontMetrics().stringWidth(pauseText);
+        g2.drawString(pauseText, (screenWidth - textWidth) / 2, screenHeight / 2 - 50);
+        
+        g2.setFont(gameFont.deriveFont(Font.PLAIN, 20));
+        String continueText = "Presiona ESC o P para continuar";
+        textWidth = g2.getFontMetrics().stringWidth(continueText);
+        g2.drawString(continueText, (screenWidth - textWidth) / 2, screenHeight / 2 + 20);
     }
 
 

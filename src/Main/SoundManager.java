@@ -23,6 +23,8 @@ public class SoundManager {
     public static final String DEATH = "death";
     public static final String GAME_OVER = "gameover";
     public static final String PIPE_POWER_DOWN = "pipepowerdown";
+    public static final String HURRY_UP = "hurryup";
+    public static final String STAGE_CLEAR = "stageclear";
 
     public SoundManager() {
         loadSounds();
@@ -44,6 +46,8 @@ public class SoundManager {
         loadSound(DEATH, "/res/sounds/death.wav");
         loadSound(GAME_OVER, "/res/sounds/gameover.wav");
         loadSound(PIPE_POWER_DOWN, "/res/sounds/pipepowerdown.wav");
+        loadSound(HURRY_UP, "/res/sounds/hurryup.wav");
+        loadSound(STAGE_CLEAR, "/res/sounds/smb_stage_clear.wav");
     }
 
     /**
@@ -58,10 +62,22 @@ public class SoundManager {
             }
             
             AudioInputStream audioStream = AudioSystem.getAudioInputStream(soundURL);
-            AudioFormat format = audioStream.getFormat();
-            DataLine.Info info = new DataLine.Info(Clip.class, format);
-            Clip clip = (Clip) AudioSystem.getLine(info);
-            clip.open(audioStream);
+            AudioFormat baseFormat = audioStream.getFormat();
+            
+            AudioFormat decodedFormat = new AudioFormat(
+                AudioFormat.Encoding.PCM_SIGNED,
+                baseFormat.getSampleRate(),
+                16,
+                baseFormat.getChannels(),
+                baseFormat.getChannels() * 2,
+                baseFormat.getSampleRate(),
+                false
+            );
+            
+            AudioInputStream decodedStream = AudioSystem.getAudioInputStream(decodedFormat, audioStream);
+            
+            Clip clip = AudioSystem.getClip();
+            clip.open(decodedStream);
             
             soundClips.put(name, clip);
             
@@ -80,14 +96,18 @@ public class SoundManager {
         
         Clip clip = soundClips.get(soundName);
         if (clip != null) {
-            // Reproducir en un nuevo thread para evitar lag
             new Thread(() -> {
-                synchronized (clip) {
-                    if (clip.isRunning()) {
-                        clip.stop();
+                try {
+                    synchronized (clip) {
+                        if (clip.isRunning()) {
+                            clip.stop();
+                        }
+                        clip.flush();
+                        clip.setFramePosition(0);
+                        clip.start();
                     }
-                    clip.setFramePosition(0);
-                    clip.start();
+                } catch (Exception e) {
+                    System.err.println("⚠️ Error al reproducir sonido " + soundName + ": " + e.getMessage());
                 }
             }).start();
         } else {
@@ -110,12 +130,26 @@ public class SoundManager {
      * Detiene todos los sonidos
      */
     public void stopAllSounds() {
-        for (Clip clip : soundClips.values()) {
-            if (clip.isRunning()) {
-                clip.stop();
-                clip.setFramePosition(0);
+        for (Map.Entry<String, Clip> entry : soundClips.entrySet()) {
+            Clip clip = entry.getValue();
+            if (clip != null) {
+                try {
+                    synchronized (clip) {
+                        if (clip.isRunning()) {
+                            clip.stop();
+                        }
+                        clip.flush();
+                        clip.close();
+                        clip.setFramePosition(0);
+                    }
+                } catch (Exception e) {
+                    // Ignorar errores al detener
+                }
             }
         }
+        // Recargar los sonidos
+        soundClips.clear();
+        loadSounds();
     }
 
     /**
