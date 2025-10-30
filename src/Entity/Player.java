@@ -289,6 +289,12 @@ public class Player extends Entity {
                 falling = false;
                 velocityY = jumpSpeed;
                 onPlatform = false;
+                // Reproducir sonido de salto según el tamaño de Mario
+                if (isBig || isFire) {
+                    gp.soundManager.playSound(Main.SoundManager.JUMP);
+                } else {
+                    gp.soundManager.playSound(Main.SoundManager.JUMP_SMALL);
+                }
             }
 
             if (jumping) {
@@ -427,11 +433,14 @@ public class Player extends Entity {
                 
                 if (gp.luckyBlocksHit == 2) {
                     gp.spawnMushroom(col * gp.tileSize, playerRow * gp.tileSize);
+                    gp.soundManager.playSound(Main.SoundManager.ITEM_APPEAR);
                 } else if (gp.luckyBlocksHit == 3) {
                     gp.spawnFireFlower(col * gp.tileSize, playerRow * gp.tileSize);
+                    gp.soundManager.playSound(Main.SoundManager.ITEM_APPEAR);
                 } else {
                     gp.coinCount++;
                     gp.coinAnimations.add(new CoinAnimation(gp, col * gp.tileSize, playerRow * gp.tileSize));
+                    gp.soundManager.playSound(Main.SoundManager.COIN);
                 }
                 gp.luckyBlocksHit++;
                 return;
@@ -441,11 +450,13 @@ public class Player extends Entity {
                 if (isBig) {
                     gp.tileM.mapTileNum[col][playerRow] = 5;
                     gp.spawnBrickParticles(col * gp.tileSize, playerRow * gp.tileSize);
+                    gp.soundManager.playSound(Main.SoundManager.BRICK_BREAK);
                     
                     velocityY = 2;
                     return;
                 } else {
                     gp.blockBumps.add(new BlockBump(gp, col, playerRow));
+                    gp.soundManager.playSound(Main.SoundManager.BUMP);
                 }
             }
         }
@@ -462,6 +473,7 @@ public class Player extends Entity {
                     killsCont++;
                     jumping = true;
                     velocityY = jumpSpeed / 2;
+                    gp.soundManager.playSound(Main.SoundManager.KICK_KILL);
                 } else if (!isInvulnerable) {
                     die();
                 }
@@ -619,19 +631,40 @@ public class Player extends Entity {
             isFire = false;
             isInvulnerable = true;
             invulnerabilityTimer = 0;
+            gp.soundManager.playSound(Main.SoundManager.PIPE_POWER_DOWN);
             System.out.println("Fire Mario perdió el poder de fuego");
         } else if (isBig) {
             isBig = false;
             isCrouching = false;
             isInvulnerable = true;
             invulnerabilityTimer = 0;
+            gp.soundManager.playSound(Main.SoundManager.PIPE_POWER_DOWN);
             System.out.println("Mario se hizo pequeño e invulnerable temporalmente");
         } else {
             System.out.println("Mario ha muerto");
             isDead = true;
             deathAnimationStarted = false;
             deathAnimationTimer = 0;
+            gp.soundManager.playSound(Main.SoundManager.DEATH);
         }
+    }
+    
+    /**
+     * Muerte instantánea sin respetar power-ups (usado al caer al vacío)
+     */
+    public void dieInstantly() {
+        if (isDead) {
+            return;
+        }
+        System.out.println("Mario ha muerto (caída al vacío)");
+        isFire = false;
+        isBig = false;
+        isCrouching = false;
+        isInvulnerable = false;
+        isDead = true;
+        deathAnimationStarted = false;
+        deathAnimationTimer = 0;
+        gp.soundManager.playSound(Main.SoundManager.DEATH);
     }
     
     private void updateDeathAnimation() {
@@ -654,6 +687,7 @@ public class Player extends Entity {
     public void powerUp() {
         if (!isBig) {
             isBig = true;
+            gp.soundManager.playSound(Main.SoundManager.POWER_UP);
             System.out.println("Mario se hizo grande!");
         }
     }
@@ -669,12 +703,14 @@ public class Player extends Entity {
         boolean facingRight = direction.contains("Right") || direction.contains("Der") || direction.equals("JumpD");
         
         gp.fireballs.add(new Fireball(gp, fireballX, fireballY, facingRight));
+        gp.soundManager.playSound(Main.SoundManager.FIREBALL);
     }
     
     public void powerUpFire() {
         if (!isFire) {
             isBig = true;
             isFire = true;
+            gp.soundManager.playSound(Main.SoundManager.POWER_UP);
         }
     }
     

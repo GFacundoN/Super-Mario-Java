@@ -41,6 +41,7 @@ public class GamePanel extends JPanel implements Runnable {
     public TileManager tileM;
     public KeyHandler keyH = new KeyHandler();
     public SpriteManager spriteManager;
+    public SoundManager soundManager;
     Thread gameThread;
 
     public Player player;
@@ -92,6 +93,7 @@ public class GamePanel extends JPanel implements Runnable {
         this.setFocusable(true);
 
         spriteManager = new SpriteManager();
+        soundManager = new SoundManager();
         
         player = new Player(this, keyH);
         
@@ -200,6 +202,15 @@ try {
         }
 
         if (isDisplayingLives) {
+            if (System.currentTimeMillis() - lifeDisplayStartTime > lifeDisplayDuration) {
+                isDisplayingLives = false;
+                if (lives > 0) {
+                    player.setDefaultValues();
+                } else {
+                    isGameOver = true;
+                    gameOverStartTime = System.currentTimeMillis();
+                }
+            }
             return;
         }
 
@@ -213,7 +224,7 @@ try {
             player.update();
             
             if (!player.isDead() && player.worldY > maxWorldRow * tileSize) {
-                player.die();
+                player.dieInstantly();
             }
             
             if (player.worldX >= tileSize * 200) {
@@ -270,6 +281,7 @@ try {
                         enemy.die();
                         fireball.isActive = false;
                         player.killsCont++;
+                        soundManager.playSound(SoundManager.KICK_KILL);
                         break;
                     }
                 }
@@ -311,22 +323,15 @@ try {
         super.paintComponent(g);
         Graphics2D g2 = (Graphics2D) g;
 
-        if (isDisplayingLives) {
-            drawLifeDisplay(g2);
-            if (System.currentTimeMillis() - lifeDisplayStartTime > lifeDisplayDuration) {
-                isDisplayingLives = false;
-                if (lives > 0) {
-                    player.setDefaultValues();
-                } else {
-                    isGameOver = true;
-                    gameOverStartTime = System.currentTimeMillis();
-                }
-            }
+        if (isGameOver) {
+            drawGameOver(g2);
+            g2.dispose();
             return;
         }
 
-        if (isGameOver) {
-            drawGameOver(g2);
+        if (isDisplayingLives) {
+            drawLifeDisplay(g2);
+            g2.dispose();
             return;
         }
 
@@ -335,6 +340,7 @@ try {
             if (System.currentTimeMillis() - victoryStartTime > victoryDelay) {
                 resetGame();
             }
+            g2.dispose();
             return;
         }
 
@@ -468,6 +474,7 @@ try {
         } else {
             isGameOver = true;
             gameOverStartTime = System.currentTimeMillis();
+            soundManager.playSound(SoundManager.GAME_OVER);
         }
     }
 
