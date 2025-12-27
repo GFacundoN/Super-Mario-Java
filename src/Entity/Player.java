@@ -319,7 +319,6 @@ public class Player extends Entity {
                     falling = false;
                     velocityY = 0;
                     onPlatform = true;
-                    killsCont = 0;
                     if (direction.equals("JumpD")) {
                         direction = "StartRight";
                     } else if (direction.equals("JumpL")) {
@@ -358,7 +357,6 @@ public class Player extends Entity {
                     falling = false;
                     velocityY = 0;
                     onPlatform = true;
-                    killsCont = 0;
                     if (direction.equals("JumpD")) {
                         direction = "StartRight";
                     } else if (direction.equals("JumpL")) {

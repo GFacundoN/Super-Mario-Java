@@ -159,12 +159,6 @@ try {
     }
     coinImage = ImageIO.read(coinStream);
 
-    InputStream nubeStream = getClass().getResourceAsStream("/res/nube.png");
-    if (nubeStream == null) {
-        throw new IOException("No se encontró la imagen nube.png");
-    }
-    nubeImage = ImageIO.read(nubeStream);
-
 } catch (IOException | FontFormatException e) {
     e.printStackTrace();
     gameFont = new Font("SansSerif", Font.PLAIN, 16); 
